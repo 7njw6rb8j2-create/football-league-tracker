@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Football League Tracker</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f4f6fa}
+*{box-sizing:border-box}body{margin:0}.wrap{max-width:1100px;margin:auto;padding:24px 16px 44px}.hero{background:#172033;color:white;border-radius:18px;padding:26px;margin-bottom:20px}.hero h1{margin:0 0 6px;font-size:30px}.hero p{margin:0;color:#cbd3e1}.status{margin-top:14px;font-size:13px;color:#aeb9ca}.refresh{margin-top:14px;border:0;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer;background:white;color:#172033}.error{background:#fff3f3;color:#9c2d2d;border:1px solid #f0c9c9;padding:14px;border-radius:12px;margin-bottom:16px;display:none}.group{background:#e9edf4;border-radius:18px;padding:16px;margin:0 0 20px}.group h2{font-size:20px;margin:2px 4px 14px;color:#172033}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px}.card{background:white;border-radius:14px;padding:17px;border:1px solid #e2e6ed;box-shadow:0 3px 12px #17203310}.top{display:flex;justify-content:space-between;align-items:center;gap:10px}.team{font-size:19px;font-weight:800}.league{font-size:12px;color:#727c8d;margin-top:3px}.pos{font-size:38px;font-weight:900;line-height:1}.target{margin:14px 0 8px;font-size:13px;color:#5d6676}.bar{height:9px;background:#e5e8ee;border-radius:20px;overflow:hidden}.fill{height:100%;border-radius:20px;background:#7d8797}.fill.good{background:#20a464}.fill.bad{background:#e25555}.details{display:flex;justify-content:space-between;margin-top:10px;font-size:12px;color:#687285}.foot{text-align:center;color:#7a8392;font-size:12px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<section class="hero"><h1>Football League Tracker</h1><p>League positions and season targets</p><div class="status" id="status">Loading…</div><button class="refresh" id="refresh">Refresh</button></section>
+<div class="error" id="error"></div>
+<main id="groups"></main>
+<div class="foot">Data supplied by BBC Sport and updated automatically.</div>
+</div>
+<script>
+const groups=[
+ {title:'Group 1',teams:[['Wrexham','Top 8'],['Stockport County','Top 6'],['Chelsea','Top 4'],['Barnet','Top 7']]},
+ {title:'Group 2',teams:[['West Ham','1st'],['Luton','Top 6'],['Huddersfield','Top 6'],['Bristol Rovers','Top 7'],['Cardiff','Bottom 3'],['Newport County','Bottom 2']]},
+ {title:'Group 3',teams:[['Hull','20th'],['Birmingham','Top 8'],['Bromley','Bottom 4'],['Barnet','Top 7'],['Bristol Rovers','Top 7']]},
+ {title:'Group 4',teams:[['Wolves','Top 2'],['Norwich','Top 8'],['Stockport County','Top 6'],['Salford','Top 3'],['Grimsby','Top 7']]},
+ {title:'Group 5',teams:[['Nottingham Forest','Top 10'],['Wolves','Promotion'],['Plymouth','Top 6'],['Grimsby','Top 7']]}
+];
+function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function targetInfo(label){
+ const m=label.match(/^(Top|Bottom) (\d+)$/);
+ if(m)return {type:m[1].toLowerCase(),n:Number(m[2]),text:label};
+ if(label==='1st')return {type:'exact',n:1,text:label};
+ if(label==='20th')return {type:'exact',n:20,text:label};
+ if(label==='Promotion')return {type:'top',n:6,text:label};
+ return {type:'top',n:0,text:label};
+}
+function onTarget(position,label,leagueSize){
+ const t=targetInfo(label);
+ if(t.type==='top'||t.type==='exact') return t.type==='exact'?position===t.n:position<=t.n;
+ if(t.type==='bottom') return position>=Math.max(1,leagueSize-t.n+1);
+ return false;
+}
+function render(data){
+ const map=Object.fromEntries(data.teams.map(t=>[t.name,t]));
+ const root=document.getElementById('groups'); root.innerHTML='';
+ groups.forEach(g=>{
+  const section=document.createElement('section');section.className='group';
+  section.innerHTML='<h2>'+esc(g.title)+'</h2><div class="cards"></div>';
+  const cards=section.querySelector('.cards');
+  g.teams.forEach(([name,label])=>{
+   const t=map[name]; if(!t)return;
+   const leagueSize=t.league_size||20;
+   const good=onTarget(t.position,label,leagueSize);
+   const info=targetInfo(label);
+   let pct;
+   if(info.type==='bottom') pct=Math.min(100,Math.max(5,(t.position-(leagueSize-info.n))/info.n*100));
+   else if(info.type==='exact') pct=Math.min(100,Math.max(5,100-Math.abs(t.position-info.n)*10));
+   else pct=Math.min(100,Math.max(5,(leagueSize-t.position+1)/Math.max(leagueSize,1)*100));
+   const card=document.createElement('article');card.className='card';
+   card.innerHTML=`<div class="top"><div><div class="team">${esc(name)}</div><div class="league">${esc(t.league)}</div></div><div class="pos">${esc(t.position)}</div></div><div class="target">Target: <strong>${esc(label)}</strong></div><div class="bar"><div class="fill ${good?'good':'bad'}" style="width:${pct}%"></div></div><div class="details"><span>${good?'On target':'Outside target'}</span><span>${t.points==null?'':esc(t.points)+' pts'}</span></div>`;
+   cards.appendChild(card);
+  });
+  root.appendChild(section);
+ });
+ document.getElementById('status').textContent='Last updated: '+new Date(data.updated).toLocaleString('en-GB');
+}
+async function load(){const error=document.getElementById('error');error.style.display='none';try{const r=await fetch('data.json?'+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error();render(await r.json());}catch(e){error.textContent='The latest league data could not be loaded. The automatic update may be running.';error.style.display='block';document.getElementById('status').textContent='Unable to load latest data';}}
+document.getElementById('refresh').onclick=load;load();
+</script>
+</body>
+</html>

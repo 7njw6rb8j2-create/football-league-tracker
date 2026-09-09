@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Football League Tracker</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f4f6fa}
+*{box-sizing:border-box}body{margin:0}.wrap{max-width:1050px;margin:auto;padding:28px 18px 45px}.hero{background:#172033;color:white;border-radius:18px;padding:28px;margin-bottom:20px}.hero h1{margin:0 0 7px;font-size:30px}.hero p{margin:0;color:#cbd3e1}.status{margin-top:16px;font-size:14px;color:#aeb9ca}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}.card{background:white;border-radius:16px;padding:20px;box-shadow:0 4px 18px #17203312;border:1px solid #e7eaf0}.top{display:flex;justify-content:space-between;align-items:center;gap:12px}.team{font-size:21px;font-weight:750}.league{font-size:13px;color:#6c7484;margin-top:3px}.pos{font-size:42px;font-weight:800;line-height:1}.target{margin:18px 0 10px;font-size:14px;color:#555f70}.bar{height:11px;background:#e7eaf0;border-radius:20px;overflow:hidden}.fill{height:100%;border-radius:20px;background:#2f7df6}.fill.good{background:#20a464}.fill.bad{background:#e25555}.details{display:flex;justify-content:space-between;margin-top:12px;font-size:13px;color:#687285}.error{background:#fff3f3;color:#9c2d2d;border:1px solid #f0c9c9;padding:15px;border-radius:12px;margin-bottom:16px;display:none}.foot{margin-top:18px;text-align:center;color:#7a8392;font-size:12px}.refresh{margin-top:18px;border:0;border-radius:10px;padding:10px 15px;font-weight:700;cursor:pointer;background:white;color:#172033}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="hero">
+    <h1>Football League Tracker</h1>
+    <p>League positions and season targets</p>
+    <div class="status" id="status">Loading…</div>
+    <button class="refresh" id="refresh">Refresh</button>
+  </section>
+  <div class="error" id="error"></div>
+  <main class="grid" id="teams"></main>
+  <div class="foot">Data supplied by BBC Sport and updated automatically.</div>
+</div>
+<script>
+const targets={
+  Wrexham:{target:8,label:'Top 8'},
+  'Stockport County':{target:6,label:'Top 6'},
+  Chelsea:{target:4,label:'Top 4'},
+  Barnet:{target:7,label:'Top 7'}
+};
+function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function render(data){
+ const root=document.getElementById('teams'); root.innerHTML='';
+ data.teams.forEach(t=>{
+   const cfg=targets[t.name]||{}; const target=cfg.target||t.target||0;
+   const max=Math.max(target, t.league_size||target, 1);
+   const pct=Math.max(0,Math.min(100,(max-t.position+1)/max*100));
+   const good=target && t.position<=target;
+   const fillClass=good?'good':(target&&t.position>target?'bad':'');
+   const card=document.createElement('article'); card.className='card';
+   card.innerHTML=`<div class="top"><div><div class="team">${esc(t.name)}</div><div class="league">${esc(t.league)}</div></div><div class="pos">${esc(t.position)}</div></div>
+   <div class="target">Target: <strong>${esc(cfg.label||('Top '+target))}</strong></div>
+   <div class="bar"><div class="fill ${fillClass}" style="width:${pct}%"></div></div>
+   <div class="details"><span>${good?'On target':'Outside target'}</span><span>${esc(t.points)} pts</span></div>`;
+   root.appendChild(card);
+ });
+ document.getElementById('status').textContent=`Last updated: ${new Date(data.updated).toLocaleString('en-GB')}`;
+}
+async function load(){
+ const error=document.getElementById('error'); error.style.display='none';
+ try{const r=await fetch('data.json?'+Date.now(),{cache:'no-store'}); if(!r.ok) throw new Error('Could not load data.json'); render(await r.json());}
+ catch(e){error.textContent='The latest league data could not be loaded. The automatic update may be running.';error.style.display='block';document.getElementById('status').textContent='Unable to load latest data';}
+}
+document.getElementById('refresh').onclick=load; load();
+</script>
+</body></html>

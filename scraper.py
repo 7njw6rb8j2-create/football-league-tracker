@@ -2,91 +2,218 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
 
-URL = "https://www.bbc.co.uk/sport/football/tables"
+
 OUT = Path("site/data.json")
 
-# League is associated with each club so the display remains stable even if BBC changes headings.
 TEAMS = {
-    "Wrexham": {"league": "Championship", "target": 8},
-    "Stockport County": {"league": "League One", "target": 6},
-    "Chelsea": {"league": "Premier League", "target": 4},
-    "Barnet": {"league": "League Two", "target": 7},
+    "Wrexham": {
+        "url": "https://www.bbc.co.uk/sport/football/teams/wrexham/table",
+        "target": 8,
+    },
+    "Stockport County": {
+        "url": "https://www.bbc.co.uk/sport/football/teams/stockport-county/table",
+        "target": 6,
+    },
+    "Chelsea": {
+        "url": "https://www.bbc.co.uk/sport/football/teams/chelsea/table",
+        "target": 4,
+    },
+    "Barnet": {
+        "url": "https://www.bbc.co.uk/sport/football/teams/barnet/table",
+        "target": 7,
+    },
 }
-ALIASES = {"Stockport": "Stockport County"}
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; FootballLeagueTracker/1.0)"}
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; FootballLeagueTracker/1.0; "
+        "+https://github.com/)"
+    )
+}
 
-def clean(s):
-    return re.sub(r"\s+", " ", s or "").strip()
 
-def position_from_cells(cells, row_index):
-    for cell in cells[:3]:
-        text = clean(cell.get_text(" ", strip=True))
-        if re.fullmatch(r"\d{1,2}", text):
-            n = int(text)
-            if 1 <= n <= 40:
-                return n
-    return row_index
+def clean(text):
+    return re.sub(r"\s+", " ", text or "").strip()
 
-def extract_rows(soup):
-    found = {}
-    for table in soup.find_all("table"):
-        rows = table.find_all("tr")
-        data_index = 0
-        for row in rows:
-            cells = row.find_all(["th", "td"])
-            if len(cells) < 2:
-                continue
-            texts = [clean(c.get_text(" ", strip=True)) for c in cells]
-            joined = " | ".join(texts)
-            matched = None
-            for alias, canonical in {**{k:k for k in TEAMS}, **ALIASES}.items():
-                if re.search(rf"\b{re.escape(alias)}\b", joined, re.I):
-                    matched = canonical
+
+def get_team_table(team_name, config):
+    print(f"Fetching {team_name}...")
+
+    response = requests.get(
+        config["url"],
+        headers=HEADERS,
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # ---------------------------------------------------------
+    # Find the league name.
+    # BBC puts the competition name immediately before
+    # the table.
+    # ---------------------------------------------------------
+
+    league = None
+
+    for heading in soup.find_all(["h1", "h2", "h3", "h4"]):
+        text = clean(heading.get_text(" ", strip=True))
+
+        if text in {
+            "Premier League",
+            "Championship",
+            "League One",
+            "League Two",
+            "Scottish Premiership",
+        }:
+            league = text
+            break
+
+    # ---------------------------------------------------------
+    # Find the row containing the team.
+    # ---------------------------------------------------------
+
+    team_position = None
+    points = None
+
+    # BBC uses table rows for the league standings.
+    for row in soup.find_all("tr"):
+        row_text = clean(row.get_text(" ", strip=True))
+
+        if not row_text:
+            continue
+
+        # Match the team name.
+        if team_name.lower() not in row_text.lower():
+            continue
+
+        cells = row.find_all(["th", "td"])
+
+        if not cells:
+            continue
+
+        cell_text = [
+            clean(cell.get_text(" ", strip=True))
+            for cell in cells
+        ]
+
+        print(f"Matched {team_name}: {cell_text}")
+
+        # First numeric value is normally the position.
+        for value in cell_text:
+            if re.fullmatch(r"\d{1,2}", value):
+                number = int(value)
+
+                if 1 <= number <= 30:
+                    team_position = number
                     break
-            if not matched:
+
+        # Points are normally the final numeric value before
+        # the form indicators.
+        numeric_values = []
+
+        for value in cell_text:
+            if re.fullmatch(r"-?\d+", value):
+                numeric_values.append(int(value))
+
+        if numeric_values:
+            points = numeric_values[-1]
+
+        break
+
+    # ---------------------------------------------------------
+    # Fallback: look for the team's BBC link and inspect its
+    # surrounding parent elements.
+    # ---------------------------------------------------------
+
+    if team_position is None:
+
+        for link in soup.find_all("a"):
+            link_text = clean(link.get_text(" ", strip=True))
+
+            if link_text.lower() != team_name.lower():
                 continue
-            data_index += 1
-            pos = position_from_cells(cells, data_index)
-            nums = [int(x) for x in re.findall(r"(?<!\d)\d+(?!\d)", joined)]
-            # BBC normally exposes position, played, won, drawn, lost, GF, GA, GD, points.
-            # Prefer the numeric cell immediately after the team name for points if available.
-            points = "-"
-            for text in reversed(texts):
-                if re.fullmatch(r"\d+", text):
-                    points = int(text)
+
+            parent = link
+
+            for _ in range(5):
+                parent = parent.parent
+
+                if parent is None:
                     break
-            found[matched] = {"position": pos, "points": points}
-    return found
+
+                text = clean(parent.get_text(" ", strip=True))
+
+                if team_name.lower() not in text.lower():
+                    continue
+
+                numbers = [
+                    int(x)
+                    for x in re.findall(r"(?<!\d)\d{1,2}(?!\d)", text)
+                    if 1 <= int(x) <= 30
+                ]
+
+                if numbers:
+                    team_position = numbers[0]
+
+                break
+
+            if team_position is not None:
+                break
+
+    if team_position is None:
+        raise RuntimeError(
+            f"Could not determine the league position of {team_name}"
+        )
+
+    if league is None:
+        raise RuntimeError(
+            f"Could not determine the league for {team_name}"
+        )
+
+    print(
+        f"{team_name}: position={team_position}, "
+        f"league={league}, points={points}"
+    )
+
+    return {
+        "name": team_name,
+        "league": league,
+        "target": config["target"],
+        "position": team_position,
+        "points": points,
+    }
+
 
 def main():
-    r = requests.get(URL, headers=HEADERS, timeout=30)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
-    found = extract_rows(soup)
-    missing = [name for name in TEAMS if name not in found]
-    if missing:
-        raise RuntimeError("Could not find these teams on BBC tables: " + ", ".join(missing))
+
+    teams = []
+
+    for team_name, config in TEAMS.items():
+        team = get_team_table(team_name, config)
+        teams.append(team)
 
     payload = {
         "updated": datetime.now(timezone.utc).isoformat(),
-        "source": URL,
-        "teams": []
+        "source": "BBC Sport",
+        "teams": teams,
     }
-    for name, cfg in TEAMS.items():
-        item = found[name]
-        payload["teams"].append({
-            "name": name,
-            "league": cfg["league"],
-            "target": cfg["target"],
-            "position": item["position"],
-            "points": item["points"],
-        })
-    OUT.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+
+    OUT.write_text(
+        json.dumps(payload, indent=2),
+        encoding="utf-8",
+    )
+
+    print()
+    print("Successfully generated:")
     print(json.dumps(payload, indent=2))
+
 
 if __name__ == "__main__":
     main()

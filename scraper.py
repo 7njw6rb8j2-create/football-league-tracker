@@ -103,14 +103,11 @@ def get_team_table(team_name, config):
 
         print(f"Matched {team_name}: {cell_text}")
 
-        # First numeric value is normally the position.
-        for value in cell_text:
-            if re.fullmatch(r"\d{1,2}", value):
-                number = int(value)
-
-                if 1 <= number <= 30:
-                    team_position = number
-                    break
+        # BBC table structure:
+# [Position, Team, Played, Won, Drawn, Lost, ...]
+# Position is the first entry.
+if cell_text and re.fullmatch(r"\d{1,2}", cell_text[0]):
+    team_position = int(cell_text[0])
 
         # Points are normally the final numeric value before
         # the form indicators.

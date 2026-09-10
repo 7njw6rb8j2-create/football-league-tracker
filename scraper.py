@@ -1,3 +1,4 @@
+```python
 import json
 import re
 from datetime import datetime, timezone
@@ -135,12 +136,63 @@ def extract_rows(soup):
     return found
 
 
+def find_goals_table(soup):
+    """
+    Find the BBC table containing the Premier League goalscorers.
+
+    The BBC page also contains an assists table. We specifically
+    identify the table whose header contains 'Goals' and ignore
+    the assists table.
+    """
+
+    for table in soup.find_all("table"):
+
+        # Look at the table headers first.
+        headers = table.find_all(["th"])
+
+        header_text = " ".join(
+            clean(header.get_text(" ", strip=True))
+            for header in headers
+        ).lower()
+
+        # We want a table containing Goals, but NOT one whose
+        # primary statistic is Assists.
+        if "goals" in header_text and "assists" in header_text:
+            # The BBC may have both headings within the same
+            # table structure. Check the first row as well.
+            rows = table.find_all("tr")
+
+            if rows:
+                first_row_text = clean(
+                    rows[0].get_text(" ", strip=True)
+                ).lower()
+
+                if "goals" in first_row_text:
+                    return table
+
+        elif "goals" in header_text:
+            return table
+
+    # Fallback: find a table whose first few rows clearly contain
+    # the Goals heading.
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+
+        for row in rows[:3]:
+            text = clean(row.get_text(" ", strip=True)).lower()
+
+            if "rank" in text and "name" in text and "goals" in text:
+                return table
+
+    return None
+
+
 def extract_goalscorers(soup):
     found = {}
 
-    # Start every tracked player at 0 goals.
-    # If they appear on the BBC list, their actual total
-    # will replace this value below.
+    # Start every tracked player at zero.
+    # If a player does not appear on the BBC goals list,
+    # they will remain at zero.
     for player, target in GOALSCORERS.items():
         found[player] = {
             "name": player,
@@ -149,59 +201,97 @@ def extract_goalscorers(soup):
             "on_target": False,
         }
 
-    for table in soup.find_all("table"):
-        for row in table.find_all("tr"):
-            row_text = clean(row.get_text(" ", strip=True))
+    # IMPORTANT:
+    # Only get the goals table.
+    # The assists table is deliberately ignored.
+    goals_table = find_goals_table(soup)
 
-            if not row_text:
-                continue
+    if goals_table is None:
+        raise RuntimeError(
+            "Could not find the Premier League goalscorer table on BBC"
+        )
 
-            matched_player = None
+    print("Found Premier League goalscorer table")
 
-            for player in GOALSCORERS:
-                if player.lower() in row_text.lower():
-                    matched_player = player
-                    break
+    for row in goals_table.find_all("tr"):
+        cells = row.find_all(["th", "td"])
 
-            # This row doesn't contain one of our tracked players.
-            if not matched_player:
-                continue
+        if not cells:
+            continue
 
-            # BBC scorer rows contain:
-            # rank, name, team, goals, goals, assists, assists, etc.
-            #
-            # The second integer in the row is the goal total.
-            numbers = re.findall(
-                r"(?<![\d.])\d+(?![\d.])",
-                row_text
-            )
+        texts = [
+            clean(cell.get_text(" ", strip=True))
+            for cell in cells
+        ]
 
-            if len(numbers) < 2:
-                continue
+        row_text = " ".join(texts)
 
-            try:
-                goals = int(numbers[1])
-            except ValueError:
-                continue
+        if not row_text:
+            continue
 
-            target = GOALSCORERS[matched_player]
+        matched_player = None
 
-            found[matched_player] = {
-                "name": matched_player,
-                "goals": goals,
-                "target": target,
-                "on_target": goals >= target,
-            }
+        for player in GOALSCORERS:
+            if player.lower() in row_text.lower():
+                matched_player = player
+                break
 
+        if not matched_player:
+            continue
+
+        # BBC rows have the rank first, followed by the player's
+        # name/team and then the Goals value.
+        #
+        # Example:
+        #
+        # 1 E. Haaland Man City 27 27 8 8 35 35 ...
+        #
+        # The first number is the rank.
+        # The second number is the goals total.
+        numbers = re.findall(
+            r"(?<![\d.])\d+(?![\d.])",
+            row_text
+        )
+
+        if len(numbers) < 2:
             print(
-                f"Matched goalscorer "
-                f"{matched_player}: {goals} goals"
+                f"Could not determine goals for {matched_player}: "
+                f"{row_text}"
+            )
+            continue
+
+        try:
+            goals = int(numbers[1])
+        except ValueError:
+            continue
+
+        target = GOALSCORERS[matched_player]
+
+        found[matched_player] = {
+            "name": matched_player,
+            "goals": goals,
+            "target": target,
+            "on_target": goals >= target,
+        }
+
+        print(
+            f"Matched goalscorer {matched_player}: "
+            f"{goals} goals"
+        )
+
+    # Report players who weren't present.
+    for player in GOALSCORERS:
+        if found[player]["goals"] == 0:
+            print(
+                f"{player} was not found on the goalscorer list - "
+                f"assuming 0 goals"
             )
 
     return found
 
 
 def main():
+
     # ---------------------------------------------------------
     # LEAGUE TABLES
     # ---------------------------------------------------------
@@ -250,12 +340,10 @@ def main():
         "html.parser"
     )
 
-    # Players who aren't present on the BBC list are
-    # automatically given 0 goals by this function.
     scorers = extract_goalscorers(scorer_soup)
 
     # ---------------------------------------------------------
-    # BUILD DATA FILE
+    # BUILD DATA
     # ---------------------------------------------------------
 
     payload = {

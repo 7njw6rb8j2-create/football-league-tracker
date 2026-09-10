@@ -13,17 +13,17 @@
 <div class="wrap">
 <section class="hero"><h1>Football League Tracker</h1><p>League positions and season targets</p><div class="status" id="status">Loading…</div><button class="refresh" id="refresh">Refresh</button></section>
 <div class="error" id="error"></div>
-<section class="scorers" id="scorers"><h2>Goalscorers</h2><div class="scorer-grid" id="scorer-grid"></div></section>
+<section class="scorers" id="scorers"><h2>Goalscorers £6.89 @ 25/1</h2><div class="scorer-grid" id="scorer-grid"></div></section>
 <main id="groups"></main>
 <div class="foot">Data supplied by BBC Sport and updated automatically.</div>
 </div>
 <script>
 const groups=[
- {title:'Group 1',teams:[['Wrexham','Top 8'],['Stockport County','Top 6'],['Chelsea','Top 4'],['Barnet','Top 7']]},
- {title:'Group 2',teams:[['West Ham','1st'],['Luton','Top 6'],['Huddersfield','Top 6'],['Bristol Rovers','Top 7'],['Cardiff','Bottom 3'],['Newport County','Bottom 2']]},
- {title:'Group 3',teams:[['Hull','20th'],['Birmingham','Top 8'],['Bromley','Bottom 4'],['Barnet','Top 7'],['Bristol Rovers','Top 7']]},
- {title:'Group 4',teams:[['Wolves','Top 2'],['Norwich','Top 8'],['Stockport County','Top 6'],['Salford','Top 3'],['Grimsby','Top 7']]},
- {title:'Group 5',teams:[['Nottingham Forest','Top 10'],['Wolves','Promotion'],['Plymouth','Top 6'],['Grimsby','Top 7']]}
+ {title:'PP 22.71/1 - £2.97',teams:[['Wrexham','Top 8'],['Stockport County','Top 6'],['Chelsea','Top 4'],['Barnet','Top 7']]},
+ {title:'Sky 100/1 - £2.50',teams:[['West Ham','1st'],['Luton','Top 6'],['Huddersfield','Top 6'],['Bristol Rovers','Top 7'],['Cardiff','Bottom 3'],['Newport County','Bottom 2']]},
+ {title:'Sky 33/1 - £2.50',teams:[['Hull','20th'],['Birmingham','Top 8'],['Bromley','Bottom 4'],['Barnet','Top 7'],['Bristol Rovers','Top 7']]},
+ {title:'Sky 100/1 - £2.50',teams:[['Wolves','Top 2'],['Norwich','Top 8'],['Stockport County','Top 6'],['Salford','Top 3'],['Grimsby','Top 7']]},
+ {title:'Sky 33/1 - £1',teams:[['Nottingham Forest','Top 10'],['Wolves','Promotion'],['Plymouth','Top 6'],['Grimsby','Top 7']]}
 ];
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function targetInfo(label){

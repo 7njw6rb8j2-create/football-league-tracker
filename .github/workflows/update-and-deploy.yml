@@ -34,7 +34,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Scrape BBC league tables
+      - name: Scrape BBC football data
         run: python scraper.py
 
       - name: Configure GitHub Pages
